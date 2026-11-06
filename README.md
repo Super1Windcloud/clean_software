@@ -1,77 +1,79 @@
 # clean_software
 
-Windows CLI：清理“设置 → 应用 → 安装的应用”中，软件已经移除但卸载注册表记录仍然存在的条目。Rust 实现，支持 Windows 10/11，构建需要 Rust 1.88+。
+**English** | [简体中文](README.zh-CN.md)
 
-## 使用
+A Windows CLI for removing stale uninstall registry entries from **Settings → Apps → Installed apps** after the software has been removed. Written in Rust for Windows 10/11. Building requires Rust 1.88+.
 
-在 PowerShell 中运行；系统级（HKLM）记录的清理/恢复通常需要管理员终端。
+## Usage
+
+Run in PowerShell. Cleaning or restoring system-wide (HKLM) entries usually requires an administrator terminal.
 
 ```powershell
 cargo build --release --locked
 
-# 默认只扫描，不改注册表
+# Scan by default; no registry changes
 .\target\release\clean_software.exe
 
-# 预览符合自动清理条件的记录
+# Preview entries eligible for automatic cleanup
 .\target\release\clean_software.exe clean --dry-run
 
-# 一键清理候选记录，自动备份；去掉 --yes 则逐批确认
+# Clean candidates with automatic backup; omit --yes for a batch confirmation
 .\target\release\clean_software.exe clean --yes
 ```
 
-只删除选中的 **Uninstall 卸载记录**。不会卸载软件、执行注册表里的命令、删除应用文件或扫描其他注册表位置。清理后关闭并重新打开 Windows 设置。
+Only the selected **Uninstall registry entries** are deleted. The tool does not uninstall software, execute commands stored in the registry, delete application files, or scan unrelated registry locations. Close and reopen Windows Settings after cleanup.
 
-## 扫描和定向清理
+## Scanning and targeted cleanup
 
 ```powershell
-# 查看全部记录及判定证据，包括保留/受保护的记录
+# Show all entries and evidence, including retained and protected entries
 .\target\release\clean_software.exe scan --all
 
-# 名称子串筛选，或者导出结构化数据（包含精确 id、路径证据和 warnings）
-.\target\release\clean_software.exe scan --name '软件名称'
+# Filter by application name substring, or export JSON with exact IDs, evidence, and warnings
+.\target\release\clean_software.exe scan --name 'Application name'
 .\target\release\clean_software.exe scan --all --json
 
-# ID 从 scan 输出原样复制，可重复指定 --id
-.\target\release\clean_software.exe clean --id 'HKCU/64/注册表子键名' --dry-run
+# Copy the exact ID from scan output; --id can be repeated
+.\target\release\clean_software.exe clean --id 'HKCU/64/Registry subkey name' --dry-run
 
-# 确认软件已经卸载后，定向清理“待核实”记录
-.\target\release\clean_software.exe clean --id 'HKCU/64/注册表子键名' --include-review --yes
+# Clean an entry requiring review after confirming the software has been removed
+.\target\release\clean_software.exe clean --id 'HKCU/64/Registry subkey name' --include-review --yes
 ```
 
-| 分类 | 规则 | 清理方式 |
+| Classification | Criteria | Cleanup |
 | --- | --- | --- |
-| 残留候选 | 安装目录和至少一个卸载程序/图标在在线本地固定磁盘上不存在，且其他已提供路径没有存在或未知证据 | `clean`，或 `clean --yes` |
-| 待核实 | 证据不足、无法解析路径、禁止卸载标志、含安装器子键等 | 必须指定精确 `--id --include-review` |
-| 保留 | 安装目录、卸载程序或图标任一仍存在 | 不允许清理 |
-| 受保护 | MSI、系统组件、补丁、更新或子组件 | 不允许清理 |
+| Candidate | The installation directory and at least one uninstaller/icon are missing on an online local fixed disk, with no existing or unknown paths among the other supplied evidence | `clean` or `clean --yes` |
+| Review | Insufficient evidence, unresolved paths, a removal restriction, installer subkeys, etc. | Requires an exact `--id` and `--include-review` |
+| Keep | Any installation directory, uninstaller, or icon still exists | Cleanup refused |
+| Protected | MSI, system components, patches, updates, or child components | Cleanup refused |
 
-**自动判定是启发式判断，无法证明软件真的卸载。** 推荐先看 `clean --dry-run`；迁移安装目录也可能留下失效条目。卸载按钮灰色可能是正常的 `NoRemove` 设置，不能直接视为残留。残留 MSI 请先使用厂商修复工具或 Windows Installer 处理。本工具不维护 MSI 产品数据库，不处理 Microsoft Store / Appx 的包注册。
+**Detection is heuristic and cannot prove that an application has been uninstalled.** Review `clean --dry-run` first; moving an installation directory can also leave an invalid entry. A disabled uninstall button may reflect a valid `NoRemove` setting and does not establish that the entry is stale. For stale MSI entries, use the vendor's repair tools or Windows Installer first. This tool does not maintain the MSI product database or handle Microsoft Store / Appx package registration.
 
-路径含未解析环境变量、无引号且含空格的卸载命令、通用脚本启动器、UNC/网络盘、移动盘、离线盘、权限错误及经过 junction/symlink 的缺失路径，都不会提供自动清理所需的缺失证据。存在但空的安装目录也保留，避免误删仍在使用的记录。
+Unresolved environment variables, unquoted executable paths containing spaces, generic script launchers, UNC/network paths, removable or offline drives, permission errors, and missing paths traversing junctions or symlinks do not count as reliable evidence of absence. Existing installation directories are retained even when empty, to avoid removing entries that may still be in use.
 
-## 备份与恢复
+## Backup and restore
 
-清理前完整保存选中记录的原始值类型、字节及子键到 JSON，并执行 `sync_all`。默认目录为 `%LOCALAPPDATA%\clean_software\backups`，每次使用新文件名，输出显示实际路径。可用 `--backup 'D:\Backups\apps.json'` 指定文件，已有文件绝不覆盖。备份包含选中的全部记录，包括后续因权限或变化而跳过的记录；不会保存注册表 ACL 和最后写入时间。
+Before cleanup, the tool saves all selected entries to JSON, preserving raw value types, bytes, and subkeys, then calls `sync_all`. Backups use unique filenames under `%LOCALAPPDATA%\clean_software\backups`; the actual path is printed. Use `--backup 'D:\Backups\apps.json'` to specify a file. Existing files are never overwritten. The backup includes every selected entry, including entries later skipped because of permission errors or changes. Registry ACLs and last-write timestamps are not preserved.
 
 ```powershell
-.\target\release\clean_software.exe restore 'C:\路径\备份.json' --dry-run
-.\target\release\clean_software.exe restore 'C:\路径\备份.json' --yes
+.\target\release\clean_software.exe restore 'C:\Path\backup.json' --dry-run
+.\target\release\clean_software.exe restore 'C:\Path\backup.json' --yes
 
-# 清理只完成一部分时，跳过仍存在的记录、恢复缺失的记录，绝不覆盖
-.\target\release\clean_software.exe restore 'C:\路径\备份.json' --skip-existing --yes
+# After partial cleanup, skip existing entries and restore missing ones without overwriting
+.\target\release\clean_software.exe restore 'C:\Path\backup.json' --skip-existing --yes
 ```
 
-删除逐项使用 Windows 注册表事务，删除前再次检查原始数据和路径证据；条目变化则跳过。恢复整批使用同一事务，默认遇到已存在的记录即取消整批恢复；`--skip-existing` 显式跳过已存在的记录。事务不可用时直接失败，不降级为非事务写入。备份最大 32 MiB，只允许恢复到 HKCU/HKLM 的卸载子键，拒绝符号链接和异常子键路径。请在原机器、原用户下恢复。
+Each deletion uses a Windows registry transaction and rechecks the original data and path evidence before deleting; changed entries are skipped. Restore uses one transaction for the entire batch and, by default, cancels the batch if any entry already exists. Use `--skip-existing` to explicitly skip existing entries. If transactions are unavailable, the operation fails without falling back to nontransactional writes. Backups are limited to 32 MiB. Restore targets are restricted to HKCU/HKLM uninstall subkeys; symbolic links and invalid subkey paths are rejected. Restore on the original machine under the original user account.
 
-## 覆盖范围与退出码
+## Scope and exit codes
 
-- HKLM：`Software\Microsoft\Windows\CurrentVersion\Uninstall` 的 64/32 位视图。
-- HKCU：共享的 `Software\Microsoft\Windows\CurrentVersion\Uninstall`（64 位系统标为 `HKCU/64`）；另扫描部分安装器显式写入的 `Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall`（标为 `HKCU/32`），避免共享视图重复枚举。32 位系统只扫描原生位置。
-- 仅当前用户，不加载其他用户的注册表配置单元。不使用会触发 MSI 修复的 `Win32_Product`。
-- `0` 表示操作完成、没有候选或用户取消；`1` 表示错误/清理部分失败；`2` 表示命令参数错误。扫描权限错误进入警告列表，其他位置继续扫描；JSON 输出的 `warnings` 必须一并检查，存在警告时不能视为完整扫描。
-- 非交互清理或恢复必须指定 `--yes`。权限不足时给出错误，不会自动提权。
+- HKLM: the 64-bit and 32-bit views of `Software\Microsoft\Windows\CurrentVersion\Uninstall`.
+- HKCU: the shared `Software\Microsoft\Windows\CurrentVersion\Uninstall` location (labeled `HKCU/64` on 64-bit systems), plus `Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall` explicitly written by some installers (labeled `HKCU/32`). This avoids enumerating the shared view twice. On 32-bit systems, only native locations are scanned.
+- Only the current user's hive is scanned; other users' hives are not loaded. The tool does not use `Win32_Product`, which can trigger MSI repairs.
+- Exit code `0`: completed, no candidates, or user cancellation. `1`: an error or partial cleanup failure. `2`: invalid command arguments. Scan permission errors are added to the warnings list while other locations continue to be scanned. Always inspect `warnings` in JSON output; a scan with warnings must not be treated as complete.
+- Noninteractive cleanup and restore require `--yes`. Permission errors are reported without automatic elevation.
 
-## 验证
+## Validation
 
 ```powershell
 cargo fmt --check
@@ -79,6 +81,6 @@ cargo test --locked
 cargo clippy --all-targets --locked -- -D warnings
 ```
 
-测试在 HKCU 中创建带随机标识的 `CleanSoftware_Test_*` / `CleanSoftware_CliTest_*` 临时卸载记录，仅删除这些测试记录，并清理系统临时目录中的测试备份；不清理真实应用记录。覆盖 32/64 位位置、原始类型和多层子键往返、扫描后记录变化、受保护条目拒绝、恢复冲突回滚及 CLI 的预览/确认/备份失败路径。
+Tests create temporary HKCU uninstall entries with unique `CleanSoftware_Test_*` / `CleanSoftware_CliTest_*` names, remove only those entries, and clean up test backups in the system temporary directory. Real application entries are not cleaned. Coverage includes 32-bit/64-bit locations, round trips for raw value types and nested subkeys, changes after scanning, protected-entry refusal, restore-conflict rollback, and CLI preview, confirmation, and backup-failure paths.
 
-参考：[卸载注册表字段](https://learn.microsoft.com/en-us/windows/win32/msi/uninstall-registry-key)、[NoRemove](https://learn.microsoft.com/en-us/windows/win32/msi/arpnoremove)、[注册表视图](https://learn.microsoft.com/en-us/windows/win32/sysinfo/32-bit-and-64-bit-application-data-in-the-registry)。
+References: [Uninstall registry fields](https://learn.microsoft.com/en-us/windows/win32/msi/uninstall-registry-key), [NoRemove](https://learn.microsoft.com/en-us/windows/win32/msi/arpnoremove), and [registry views](https://learn.microsoft.com/en-us/windows/win32/sysinfo/32-bit-and-64-bit-application-data-in-the-registry).
