@@ -2,23 +2,45 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+[![crates.io](https://img.shields.io/crates/v/clean_software.svg)](https://crates.io/crates/clean_software)
+
 A Windows CLI for removing stale uninstall registry entries from **Settings → Apps → Installed apps** after the software has been removed. Written in Rust for Windows 10/11. Building requires Rust 1.88+.
+
+## Installation
+
+Published on [crates.io](https://crates.io/crates/clean_software). On Windows with Rust 1.88+ installed, install or update to the latest release:
+
+```powershell
+cargo install clean_software --locked
+clean_software --version
+```
+
+Make sure Cargo's installation `bin` directory is on your `PATH` (by default, `%USERPROFILE%\.cargo\bin`).
+
+### Build from source
+
+From the repository root:
+
+```powershell
+cargo build --release --locked
+.\target\release\clean_software.exe --version
+```
+
+If building from source, replace `clean_software` in the examples below with `.\target\release\clean_software.exe`.
 
 ## Usage
 
 Run in PowerShell. Cleaning or restoring system-wide (HKLM) entries usually requires an administrator terminal.
 
 ```powershell
-cargo build --release --locked
-
 # Scan by default; no registry changes
-.\target\release\clean_software.exe
+clean_software
 
 # Preview entries eligible for automatic cleanup
-.\target\release\clean_software.exe clean --dry-run
+clean_software clean --dry-run
 
 # Clean candidates with automatic backup; omit --yes for a batch confirmation
-.\target\release\clean_software.exe clean --yes
+clean_software clean --yes
 ```
 
 Only the selected **Uninstall registry entries** are deleted. The tool does not uninstall software, execute commands stored in the registry, delete application files, or scan unrelated registry locations. Close and reopen Windows Settings after cleanup.
@@ -27,17 +49,17 @@ Only the selected **Uninstall registry entries** are deleted. The tool does not 
 
 ```powershell
 # Show all entries and evidence, including retained and protected entries
-.\target\release\clean_software.exe scan --all
+clean_software scan --all
 
 # Filter by application name substring, or export JSON with exact IDs, evidence, and warnings
-.\target\release\clean_software.exe scan --name 'Application name'
-.\target\release\clean_software.exe scan --all --json
+clean_software scan --name 'Application name'
+clean_software scan --all --json
 
 # Copy the exact ID from scan output; --id can be repeated
-.\target\release\clean_software.exe clean --id 'HKCU/64/Registry subkey name' --dry-run
+clean_software clean --id 'HKCU/64/Registry subkey name' --dry-run
 
 # Clean an entry requiring review after confirming the software has been removed
-.\target\release\clean_software.exe clean --id 'HKCU/64/Registry subkey name' --include-review --yes
+clean_software clean --id 'HKCU/64/Registry subkey name' --include-review --yes
 ```
 
 | Classification | Criteria | Cleanup |
@@ -56,11 +78,11 @@ Unresolved environment variables, unquoted executable paths containing spaces, g
 Before cleanup, the tool saves all selected entries to JSON, preserving raw value types, bytes, and subkeys, then calls `sync_all`. Backups use unique filenames under `%LOCALAPPDATA%\clean_software\backups`; the actual path is printed. Use `--backup 'D:\Backups\apps.json'` to specify a file. Existing files are never overwritten. The backup includes every selected entry, including entries later skipped because of permission errors or changes. Registry ACLs and last-write timestamps are not preserved.
 
 ```powershell
-.\target\release\clean_software.exe restore 'C:\Path\backup.json' --dry-run
-.\target\release\clean_software.exe restore 'C:\Path\backup.json' --yes
+clean_software restore 'C:\Path\backup.json' --dry-run
+clean_software restore 'C:\Path\backup.json' --yes
 
 # After partial cleanup, skip existing entries and restore missing ones without overwriting
-.\target\release\clean_software.exe restore 'C:\Path\backup.json' --skip-existing --yes
+clean_software restore 'C:\Path\backup.json' --skip-existing --yes
 ```
 
 Each deletion uses a Windows registry transaction and rechecks the original data and path evidence before deleting; changed entries are skipped. Restore uses one transaction for the entire batch and, by default, cancels the batch if any entry already exists. Use `--skip-existing` to explicitly skip existing entries. If transactions are unavailable, the operation fails without falling back to nontransactional writes. Backups are limited to 32 MiB. Restore targets are restricted to HKCU/HKLM uninstall subkeys; symbolic links and invalid subkey paths are rejected. Restore on the original machine under the original user account.
