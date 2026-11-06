@@ -1,0 +1,22 @@
+[package]
+name = "clean_software"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Windows 已安装应用卸载注册表残留清理工具"
+license = "MIT"
+author = "superwindcloud"
+
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+winreg = { version = "0.55", features = ["transactions"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Storage_FileSystem",
+    "Win32_System_SystemInformation",
+] }
